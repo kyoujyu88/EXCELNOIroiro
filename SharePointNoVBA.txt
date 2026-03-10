@@ -1,31 +1,43 @@
-Sub AddToSharePointWithSQL()
-    Dim conn As Object
+Sub AddToSharePointWithDAO()
+    Dim dbEngine As Object
+    Dim db As Object
+    Dim rs As Object
     Dim dbPath As String
     Dim tableName As String
-    Dim strSQL As String
     
-    ' 1. 同じフォルダにあるAccessファイルを指定します
+    ' 1. Accessファイルの場所を指定します
     dbPath = ThisWorkbook.Path & "\SP_Link.accdb" 
     
     ' 2. Accessの中に表示されているリンクテーブルの名前を指定します
     tableName = "TestList" 
     
-    Set conn = CreateObject("ADODB.Connection")
+    ' DAOという、Access専用の強力な連絡係を呼び出しますっ
+    Set dbEngine = CreateObject("DAO.DBEngine.120")
     
-    ' Accessのファイルに接続します
-    conn.Open "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & dbPath & ";"
+    ' Accessのファイルを開きます
+    Set db = dbEngine.OpenDatabase(dbPath)
     
-    ' SQL文を作りますっ
-    ' （※列の名前は、Accessのテーブル上の名前に合わせてくださいね）
-    strSQL = "INSERT INTO [" & tableName & "] ([Title], [本文]) " & _
-             "VALUES ('追加するタイトルです', 'ここに本文の内容を入れますっ')"
+    ' テーブルを開きます（dbOpenDynasetという開き方になります）
+    Set rs = db.OpenRecordset(tableName, 2) ' 2 = dbOpenDynaset
     
-    ' SQL文を実行して、直接データを追加します！
-    conn.Execute strSQL
+    ' 新しいアイテムを追加します…！
+    rs.AddNew
+    
+    ' 列の名前と、追加したい内容を指定します
+    rs.Fields("Title").Value = "DAOで追加するタイトルです"
+    
+    ' 本文の列名を指定します（※Access上の列名に合わせてくださいね）
+    rs.Fields("本文").Value = "今度こそ、本文も無事に届きますように…！"
+    
+    ' 変更を保存します
+    rs.Update
     
     ' 閉じてお片付けします
-    conn.Close
-    Set conn = Nothing
+    rs.Close
+    db.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Set dbEngine = Nothing
     
-    MsgBox "データの追加が完了しました…！"
+    MsgBox "データの追加が完了しましたっ…！"
 End Sub
