@@ -1,43 +1,59 @@
-Sub AddToSharePointWithDAO()
-    Dim dbEngine As Object
-    Dim db As Object
-    Dim rs As Object
-    Dim dbPath As String
-    Dim tableName As String
+Sub AddToSharePointViaREST()
+    Dim http As Object
+    Dim siteUrl As String
+    Dim listName As String
+    Dim digestUrl As String
+    Dim itemUrl As String
+    Dim formDigest As String
+    Dim postData As String
+    Dim responseText As String
+    Dim startPos As Long, endPos As Long
     
-    ' 1. Accessファイルの場所を指定します
-    dbPath = ThisWorkbook.Path & "\SP_Link.accdb" 
+    ' URLとリスト名を設定しますっ
+    siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin/HQ/sinsa"
+    listName = "TestList"
     
-    ' 2. Accessの中に表示されているリンクテーブルの名前を指定します
-    tableName = "TestList" 
+    Set http = CreateObject("MSXML2.XMLHTTP")
     
-    ' DAOという、Access専用の強力な連絡係を呼び出しますっ
-    Set dbEngine = CreateObject("DAO.DBEngine.120")
+    ' --------------------------------------------------------
+    ' ① JavaScriptと同じように、まずは許可証（FormDigest）をもらいます
+    ' --------------------------------------------------------
+    digestUrl = siteUrl & "/_api/contextinfo"
+    http.Open "POST", digestUrl, False
+    http.setRequestHeader "Accept", "application/json; odata=nometadata"
+    http.send
     
-    ' Accessのファイルを開きます
-    Set db = dbEngine.OpenDatabase(dbPath)
+    If http.Status <> 200 Then
+        MsgBox "SharePointへの接続に失敗しましたっ…。" & vbCrLf & "エラー: " & http.Status
+        Exit Sub
+    End If
     
-    ' テーブルを開きます（dbOpenDynasetという開き方になります）
-    Set rs = db.OpenRecordset(tableName, 2) ' 2 = dbOpenDynaset
+    ' お返事の中から、FormDigestValue の部分だけを切り出します
+    responseText = http.responseText
+    startPos = InStr(responseText, """FormDigestValue"":""") + 19
+    endPos = InStr(startPos, responseText, """")
+    formDigest = Mid(responseText, startPos, endPos - startPos)
     
-    ' 新しいアイテムを追加します…！
-    rs.AddNew
+    ' --------------------------------------------------------
+    ' ② リストにアイテム（タイトルと本文）を追加しますっ！
+    ' --------------------------------------------------------
+    itemUrl = siteUrl & "/_api/web/lists/getbytitle('" & listName & "')/items"
     
-    ' 列の名前と、追加したい内容を指定します
-    rs.Fields("Title").Value = "DAOで追加するタイトルです"
+    ' 送るデータを作ります（※ 本文の列の「内部名」に書き換えてくださいね）
+    postData = "{""Title"": ""VBAからの打刻テストです！"", ""本文の内部名"": ""本文も無事に届きますように…！""}"
     
-    ' 本文の列名を指定します（※Access上の列名に合わせてくださいね）
-    rs.Fields("本文").Value = "今度こそ、本文も無事に届きますように…！"
+    http.Open "POST", itemUrl, False
+    http.setRequestHeader "Accept", "application/json; odata=nometadata"
+    http.setRequestHeader "Content-Type", "application/json; odata=nometadata"
+    http.setRequestHeader "X-RequestDigest", formDigest
+    http.send postData
     
-    ' 変更を保存します
-    rs.Update
+    ' 結果の確認ですっ
+    If http.Status = 200 Or http.Status = 201 Then
+        MsgBox "大成功ですっ！タイトルも本文も追加できました…！"
+    Else
+        MsgBox "書き込みエラーですっ…。" & vbCrLf & "エラー: " & http.Status & vbCrLf & http.responseText
+    End If
     
-    ' 閉じてお片付けします
-    rs.Close
-    db.Close
-    Set rs = Nothing
-    Set db = Nothing
-    Set dbEngine = Nothing
-    
-    MsgBox "データの追加が完了しましたっ…！"
+    Set http = Nothing
 End Sub
