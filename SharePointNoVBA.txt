@@ -1,34 +1,30 @@
-Sub AddSpecificColumnsToSharePoint()
+Sub AddToSharePointViaAccess()
     Dim conn As Object
     Dim rs As Object
-    Dim siteUrl As String
-    Dim listName As String
+    Dim dbPath As String
+    Dim tableName As String
     
-    ' 接続先の情報を設定します
-    siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite"
-    listName = "{リストのGUID}"
+    ' 1. 先ほど保存したAccessファイルの場所を指定します
+    ' （※ 実際の保存先パスに書き換えてくださいね）
+    dbPath = "C:\Users\Atsushi\Documents\SP_Link.accdb" 
+    
+    ' 2. Accessの中に表示されているリンクテーブルの名前を指定します
+    tableName = "TestList" 
     
     Set conn = CreateObject("ADODB.Connection")
     Set rs = CreateObject("ADODB.Recordset")
     
-    ' SharePointリストへ接続します
-    conn.Open "Provider=Microsoft.ACE.OLEDB.12.0;WSS;IMEX=0;RetrieveIds=Yes;DATABASE=" & siteUrl & ";LIST=" & listName & ";"
+    ' Accessのファイルに接続します
+    conn.Open "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & dbPath & ";"
     
-    ' レコードセットを開きます
-    rs.Open "SELECT * FROM [" & listName & "]", conn, 1, 3
+    ' テーブルを開きます
+    rs.Open "SELECT * FROM [" & tableName & "]", conn, 1, 3
     
     ' 新しいアイテムを追加します…！
     rs.AddNew
     
-    ' 1. タイトル
-    rs.Fields("Title").Value = "追加するタイトルです"
-    
-    ' 2. 本文 (※ "Body" の部分は実際の内部名に書き換えてください)
-    rs.Fields("Body").Value = "ここに追加したい本文の内容を入力します。"
-    
-    ' 3. 有効期限 (※ "ExpirationDate" の部分は実際の内部名に書き換えてください)
-    ' 日付は #年/月/日# のように囲むか、Excelのセルの値を指定します
-    rs.Fields("ExpirationDate").Value = #12/31/2026# 
+    ' 列の名前と、追加したい内容を指定します
+    rs.Fields("Title").Value = "出勤（ExcelからAccess経由で追加ですっ）"
     
     ' 変更を保存します
     rs.Update
@@ -39,5 +35,5 @@ Sub AddSpecificColumnsToSharePoint()
     Set rs = Nothing
     Set conn = Nothing
     
-    MsgBox "リストへの追加が完了しました…！"
+    MsgBox "打刻データの追加が完了しました…！"
 End Sub
