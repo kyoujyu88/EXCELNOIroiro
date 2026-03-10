@@ -1,39 +1,31 @@
-Sub AddToSharePointViaAccess()
+Sub AddToSharePointWithSQL()
     Dim conn As Object
-    Dim rs As Object
     Dim dbPath As String
     Dim tableName As String
+    Dim strSQL As String
     
-    ' 1. 先ほど保存したAccessファイルの場所を指定します
-    ' （※ 実際の保存先パスに書き換えてくださいね）
-    dbPath = "C:\Users\Atsushi\Documents\SP_Link.accdb" 
+    ' 1. 同じフォルダにあるAccessファイルを指定します
+    dbPath = ThisWorkbook.Path & "\SP_Link.accdb" 
     
     ' 2. Accessの中に表示されているリンクテーブルの名前を指定します
     tableName = "TestList" 
     
     Set conn = CreateObject("ADODB.Connection")
-    Set rs = CreateObject("ADODB.Recordset")
     
     ' Accessのファイルに接続します
     conn.Open "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & dbPath & ";"
     
-    ' テーブルを開きます
-    rs.Open "SELECT * FROM [" & tableName & "]", conn, 1, 3
+    ' SQL文を作りますっ
+    ' （※列の名前は、Accessのテーブル上の名前に合わせてくださいね）
+    strSQL = "INSERT INTO [" & tableName & "] ([Title], [本文]) " & _
+             "VALUES ('追加するタイトルです', 'ここに本文の内容を入れますっ')"
     
-    ' 新しいアイテムを追加します…！
-    rs.AddNew
-    
-    ' 列の名前と、追加したい内容を指定します
-    rs.Fields("Title").Value = "出勤（ExcelからAccess経由で追加ですっ）"
-    
-    ' 変更を保存します
-    rs.Update
+    ' SQL文を実行して、直接データを追加します！
+    conn.Execute strSQL
     
     ' 閉じてお片付けします
-    rs.Close
     conn.Close
-    Set rs = Nothing
     Set conn = Nothing
     
-    MsgBox "打刻データの追加が完了しました…！"
+    MsgBox "データの追加が完了しました…！"
 End Sub
