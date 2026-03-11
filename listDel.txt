@@ -1,0 +1,97 @@
+Sub DeleteExpiredItems()
+    Dim http As Object
+    Dim siteUrl As String
+    Dim listName As String
+    Dim digestUrl As String
+    Dim formDigest As String
+    Dim getUrl As String
+    Dim deleteUrl As String
+    Dim todayISO As String
+    Dim responseText As String
+    Dim startPos As Long, endPos As Long
+    
+    ' 正規表現（文字探し）用の変数です
+    Dim regEx As Object, matches As Object, match As Object
+    Dim itemId As String
+    Dim deleteCount As Integer
+    
+    siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin/HQ/sinsa"
+    listName = "TestList"
+    
+    ' 比較するための「今日の日付」を作ります（例：2026-03-11T00:00:00Z）
+    todayISO = Format(Date, "yyyy-mm-dd") & "T00:00:00Z"
+    
+    Set http = CreateObject("MSXML2.XMLHTTP")
+    
+    ' --------------------------------------------------------
+    ' ① 削除の許可証（FormDigest）をもらいます
+    ' --------------------------------------------------------
+    digestUrl = siteUrl & "/_api/contextinfo"
+    http.Open "POST", digestUrl, False
+    http.setRequestHeader "Accept", "application/json; odata=nometadata"
+    http.send
+    
+    If http.Status <> 200 Then
+        MsgBox "接続に失敗しましたっ…。エラー: " & http.Status
+        Exit Sub
+    End If
+    
+    responseText = http.responseText
+    startPos = InStr(responseText, """FormDigestValue"":""") + 19
+    endPos = InStr(startPos, responseText, """")
+    formDigest = Mid(responseText, startPos, endPos - startPos)
+    
+    ' --------------------------------------------------------
+    ' ② 有効期限が今日より前のアイテムを探しますっ！
+    ' --------------------------------------------------------
+    ' ※ "有効期限の内部名" を実際の内部名に書き換えてくださいね
+    ' $filter=... lt datetime'...' で「指定した日付より前(Less Than)」という条件になります
+    getUrl = siteUrl & "/_api/web/lists/getbytitle('" & listName & "')/items?$select=Id&$filter=有効期限の内部名 lt datetime'" & todayISO & "'"
+    
+    http.Open "GET", getUrl, False
+    http.setRequestHeader "Accept", "application/json; odata=nometadata"
+    http.send
+    
+    ' --------------------------------------------------------
+    ' ③ 見つかったアイテムを順番に削除します！
+    ' --------------------------------------------------------
+    Set regEx = CreateObject("VBScript.RegExp")
+    regEx.Global = True
+    regEx.Pattern = """Id"":(\d+)|""ID"":(\d+)" ' お返事の中からIDの数字だけを抜き出します
+    
+    Set matches = regEx.Execute(http.responseText)
+    deleteCount = 0
+    
+    If matches.Count = 0 Then
+        MsgBox "期限切れのアイテムはありませんでしたっ。"
+        Exit Sub
+    End If
+    
+    ' 見つかったIDの数だけ、削除のお願いを繰り返します
+    For Each match In matches
+        If match.SubMatches(0) <> "" Then
+            itemId = match.SubMatches(0)
+        Else
+            itemId = match.SubMatches(1)
+        End If
+        
+        ' 削除用のURLには、一番後ろに(ID)をくっつけます
+        deleteUrl = siteUrl & "/_api/web/lists/getbytitle('" & listName & "')/items(" & itemId & ")"
+        
+        http.Open "POST", deleteUrl, False
+        http.setRequestHeader "Accept", "application/json; odata=nometadata"
+        http.setRequestHeader "X-RequestDigest", formDigest
+        http.setRequestHeader "IF-MATCH", "*" ' 「どのバージョンのアイテムでも消していいですよ」という合図です
+        http.setRequestHeader "X-HTTP-Method", "DELETE" ' ここで「削除」を指定します！
+        http.send
+        
+        If http.Status = 200 Or http.Status = 204 Then
+            deleteCount = deleteCount + 1
+        End If
+    Next
+    
+    MsgBox deleteCount & " 件の期限切れアイテムを削除しました…！"
+    
+    Set regEx = Nothing
+    Set http = Nothing
+End Sub
