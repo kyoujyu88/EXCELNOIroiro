@@ -1,6 +1,7 @@
-Sub CopyFolderStructure()
+Sub CopyFolderStructureSameLib()
     Dim http As Object
-    Dim siteUrl As String, sourceLib As String, destLib As String
+    Dim siteUrl As String, libName As String
+    Dim sourceFolder As String, destFolder As String
     Dim digestUrl As String, formDigest As String
     Dim getUrl As String, postUrl As String
     Dim responseText As String
@@ -11,13 +12,17 @@ Sub CopyFolderStructure()
     Dim folderUrls() As String
     Dim folderCount As Integer, i As Integer, j As Integer
     Dim tempUrl As String, newUrl As String
+    Dim createdCount As Integer
     
     ' --------------------------------------------------------
-    ' ★ここを実際の環境に合わせて書き換えてくださいねっ
+    ' ★設定エリア（環境に合わせて書き換えてくださいね）
     ' --------------------------------------------------------
     siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin/HQ/sinsa"
-    sourceLib = "コピー元のライブラリ名" ' 例: "OldDocument"
-    destLib = "コピー先のライブラリ名"   ' 例: "NewDocument"
+    libName = "対象のライブラリ名" ' 例: "Shared Documents"
+    
+    ' スラッシュ(/)を頭につけておくと、似た名前の別フォルダを間違えてコピーするのを防げます！
+    sourceFolder = "/コピー元のフォルダ名" ' 例: "/テンプレート用"
+    destFolder = "/新しく作るフォルダ名"   ' 例: "/2026年度プロジェクト"
     
     Set http = CreateObject("MSXML2.XMLHTTP")
     
@@ -37,14 +42,14 @@ Sub CopyFolderStructure()
     endPos = InStr(startPos, responseText, """")
     formDigest = Mid(responseText, startPos, endPos - startPos)
     
-    ' ② コピー元のフォルダ一覧を取得しますっ（ファイルは除外します）
-    getUrl = siteUrl & "/_api/web/lists/getbytitle('" & sourceLib & "')/items?$expand=Folder&$select=Folder/ServerRelativeUrl&$filter=FSObjType eq 1"
+    ' ② ライブラリ内のすべてのフォルダ一覧を取得しますっ
+    getUrl = siteUrl & "/_api/web/lists/getbytitle('" & libName & "')/items?$expand=Folder&$select=Folder/ServerRelativeUrl&$filter=FSObjType eq 1"
     
     http.Open "GET", getUrl, False
     http.setRequestHeader "Accept", "application/json; odata=nometadata"
     http.send
     
-    ' お返事の中から、フォルダのURL（ServerRelativeUrl）だけを探し出します！
+    ' お返事の中から、フォルダのURLだけを探し出します
     Set regEx = CreateObject("VBScript.RegExp")
     regEx.Global = True
     regEx.Pattern = """ServerRelativeUrl"":""([^""]+)"""
@@ -53,17 +58,16 @@ Sub CopyFolderStructure()
     folderCount = matches.Count
     
     If folderCount = 0 Then
-        MsgBox "コピー元のライブラリにフォルダが見つかりませんでしたっ。"
+        MsgBox "ライブラリにフォルダが見つかりませんでしたっ。"
         Exit Sub
     End If
     
-    ' 見つかったURLを配列（リスト）にしまいます
     ReDim folderUrls(folderCount - 1)
     For i = 0 To folderCount - 1
         folderUrls(i) = matches(i).SubMatches(0)
     Next i
     
-    ' ③ 親フォルダから順番に作るために、文字数が短い順に並び替えますっ
+    ' ③ 親フォルダから順番に作るために、パスの短い順に並び替えます
     For i = 0 To folderCount - 2
         For j = i + 1 To folderCount - 1
             If Len(folderUrls(i)) > Len(folderUrls(j)) Then
@@ -74,26 +78,35 @@ Sub CopyFolderStructure()
         Next j
     Next i
     
-    ' ④ 順番通りにコピー先へフォルダを作っていきます…！
+    ' ④ 対象のフォルダだけを選んで、コピー先へ作成していきます…！
     postUrl = siteUrl & "/_api/web/folders"
+    createdCount = 0
     
     For i = 0 To folderCount - 1
-        ' URLの中の「コピー元」の名前を「コピー先」にすり替えます
-        newUrl = Replace(folderUrls(i), "/" & sourceLib, "/" & destLib)
-        
-        http.Open "POST", postUrl, False
-        http.setRequestHeader "Accept", "application/json; odata=nometadata"
-        http.setRequestHeader "Content-Type", "application/json; odata=verbose"
-        http.setRequestHeader "X-RequestDigest", formDigest
-        
-        ' フォルダを作るためのお願いの文章（JSON）です
-        Dim postData As String
-        postData = "{""__metadata"":{""type"":""SP.Folder""},""ServerRelativeUrl"":""" & newUrl & """}"
-        
-        http.send postData
+        ' パスの中に「/コピー元のフォルダ名」が含まれている場合だけ処理します
+        If InStr(folderUrls(i), sourceFolder) > 0 Then
+            
+            ' URLの中の「コピー元」を「コピー先」にすり替えます
+            newUrl = Replace(folderUrls(i), sourceFolder, destFolder)
+            
+            http.Open "POST", postUrl, False
+            http.setRequestHeader "Accept", "application/json; odata=nometadata"
+            http.setRequestHeader "Content-Type", "application/json; odata=verbose"
+            http.setRequestHeader "X-RequestDigest", formDigest
+            
+            Dim postData As String
+            postData = "{""__metadata"":{""type"":""SP.Folder""},""ServerRelativeUrl"":""" & newUrl & """}"
+            
+            http.send postData
+            
+            ' エラーが出なければカウントアップします
+            If http.Status = 200 Or http.Status = 201 Then
+                createdCount = createdCount + 1
+            End If
+        End If
     Next i
     
-    MsgBox folderCount & " 個のフォルダ構成を、無事にコピーしましたっ…！"
+    MsgBox createdCount & " 個のフォルダ構成をコピーしましたっ！"
     
     Set regEx = Nothing
     Set http = Nothing
