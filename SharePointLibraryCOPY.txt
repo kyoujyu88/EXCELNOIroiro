@@ -15,10 +15,10 @@ Sub CopyFolderStructureSameLib()
     Dim createdCount As Integer
     
     ' --------------------------------------------------------
-    ' ★設定エリア（写真のパスに合わせて変更しましたっ）
+    ' ★設定エリア（篤志さんの環境に合わせていますっ）
     ' --------------------------------------------------------
-    siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin" ' ← NAFin までにしました
-    libName = "DocLib11" ' ← ライブラリ名です
+    siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin"
+    libName = "DocLib11" ' 写真にあったライブラリ名です
     
     ' スラッシュ(/)を頭につけておくと、間違えて別のフォルダを巻き込むのを防げます
     sourceFolder = "/令和５年度" ' 例: コピー元のフォルダ名
@@ -26,7 +26,9 @@ Sub CopyFolderStructureSameLib()
     
     Set http = CreateObject("MSXML2.XMLHTTP")
     
+    ' --------------------------------------------------------
     ' ① 許可証（FormDigest）をもらいます
+    ' --------------------------------------------------------
     digestUrl = siteUrl & "/_api/contextinfo"
     http.Open "POST", digestUrl, False
     http.setRequestHeader "Accept", "application/json; odata=nometadata"
@@ -42,21 +44,20 @@ Sub CopyFolderStructureSameLib()
     endPos = InStr(startPos, responseText, """")
     formDigest = Mid(responseText, startPos, endPos - startPos)
     
+    ' --------------------------------------------------------
     ' ② ライブラリ内のすべてのフォルダ一覧を取得しますっ
+    ' --------------------------------------------------------
     getUrl = siteUrl & "/_api/web/lists/getbytitle('" & libName & "')/items?$expand=Folder&$select=Folder/ServerRelativeUrl&$filter=FSObjType eq 1"
     
     http.Open "GET", getUrl, False
     http.setRequestHeader "Accept", "application/json; odata=nometadata"
     http.send
     
-    ' --------------------------------------------------------
-    ' ★ 追加したエラーチェックですっ！
-    ' --------------------------------------------------------
+    ' エラーチェックですっ！
     If http.Status <> 200 Then
         MsgBox "ライブラリの取得に失敗しましたっ…。" & vbCrLf & "ステータス: " & http.Status & vbCrLf & http.responseText
         Exit Sub
     End If
-    ' --------------------------------------------------------
     
     ' お返事の中から、フォルダのURLだけを探し出します
     Set regEx = CreateObject("VBScript.RegExp")
@@ -71,12 +72,18 @@ Sub CopyFolderStructureSameLib()
         Exit Sub
     End If
     
+    ' --------------------------------------------------------
+    ' ★ 追加した翻訳ステップですっ！
+    ' --------------------------------------------------------
     ReDim folderUrls(folderCount - 1)
     For i = 0 To folderCount - 1
-        folderUrls(i) = matches(i).SubMatches(0)
+        ' 魔法の翻訳機（DecodeUnicode）を通して、日本語に戻してからしまいます
+        folderUrls(i) = DecodeUnicode(matches(i).SubMatches(0))
     Next i
     
+    ' --------------------------------------------------------
     ' ③ 親フォルダから順番に作るために、パスの短い順に並び替えます
+    ' --------------------------------------------------------
     For i = 0 To folderCount - 2
         For j = i + 1 To folderCount - 1
             If Len(folderUrls(i)) > Len(folderUrls(j)) Then
@@ -87,7 +94,9 @@ Sub CopyFolderStructureSameLib()
         Next j
     Next i
     
+    ' --------------------------------------------------------
     ' ④ 対象のフォルダだけを選んで、コピー先へ作成していきます…！
+    ' --------------------------------------------------------
     postUrl = siteUrl & "/_api/web/folders"
     createdCount = 0
     
@@ -115,8 +124,29 @@ Sub CopyFolderStructureSameLib()
         End If
     Next i
     
-    MsgBox createdCount & " 個のフォルダ構成をコピーしましたっ！"
+    MsgBox createdCount & " 個のフォルダ構成を、無事にコピーしましたっ！"
     
     Set regEx = Nothing
     Set http = Nothing
 End Sub
+
+' --------------------------------------------------------
+' ★ SharePointからの暗号（\uXXXX）を日本語に翻訳する関数です
+' --------------------------------------------------------
+Function DecodeUnicode(ByVal strText As String) As String
+    Dim regEx As Object, matches As Object, match As Object
+    Set regEx = CreateObject("VBScript.RegExp")
+    regEx.Global = True
+    regEx.IgnoreCase = True
+    
+    ' \u（または¥u）から始まる4桁の英数字を探します
+    regEx.Pattern = "\\u([0-9A-Fa-f]{4})"
+    
+    Set matches = regEx.Execute(strText)
+    For Each match In matches
+        ' 見つかった暗号を、元の文字に変換して置き換えますっ
+        strText = Replace(strText, match.Value, ChrW(CLng("&H" & match.SubMatches(0))))
+    Next match
+    
+    DecodeUnicode = strText
+End Function
