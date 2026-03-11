@@ -1,144 +1,100 @@
-Sub CopyFolderStructureREST()
-    Dim siteUrl As String
-    Dim sourceLibUrl As String
-    Dim destLibUrl As String
-    Dim accessToken As String
-    
-    ' ==========================================
-    ' 環境設定（環境に合わせて書き換えてください）
-    ' ==========================================
-    siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite"
-    sourceLibUrl = "/sites/yoursite/SourceLibrary"
-    destLibUrl = "/sites/yoursite/DestLibrary"
-    
-    ' ※SharePoint Online等の場合、事前に取得したBearerトークンを指定します。
-    ' オンプレミス（統合Windows認証）の場合は不要なため空文字にしておきます。
-    accessToken = "YOUR_ACCESS_TOKEN"
-    
-    ' HTTP通信用オブジェクト（遅延バインディング）
+Sub CopyFolderStructure()
     Dim http As Object
-    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    
-    ' --------------------------------------------------------
-    ' Step 1: リクエストダイジェスト(X-RequestDigest)の取得
-    ' --------------------------------------------------------
-    Dim digest As String
+    Dim siteUrl As String, sourceLib As String, destLib As String
+    Dim digestUrl As String, formDigest As String
+    Dim getUrl As String, postUrl As String
     Dim responseText As String
+    Dim startPos As Long, endPos As Long
     
-    http.Open "POST", siteUrl & "/_api/contextinfo", False
-    http.setRequestHeader "Accept", "application/json;odata=nometadata"
-    http.setRequestHeader "Content-Type", "application/json;odata=nometadata"
-    If accessToken <> "" Then http.setRequestHeader "Authorization", "Bearer " & accessToken
+    ' 正規表現と配列用の変数です
+    Dim regEx As Object, matches As Object, match As Object
+    Dim folderUrls() As String
+    Dim folderCount As Integer, i As Integer, j As Integer
+    Dim tempUrl As String, newUrl As String
+    
+    ' --------------------------------------------------------
+    ' ★ここを実際の環境に合わせて書き換えてくださいねっ
+    ' --------------------------------------------------------
+    siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin/HQ/sinsa"
+    sourceLib = "コピー元のライブラリ名" ' 例: "OldDocument"
+    destLib = "コピー先のライブラリ名"   ' 例: "NewDocument"
+    
+    Set http = CreateObject("MSXML2.XMLHTTP")
+    
+    ' ① 許可証（FormDigest）をもらいます
+    digestUrl = siteUrl & "/_api/contextinfo"
+    http.Open "POST", digestUrl, False
+    http.setRequestHeader "Accept", "application/json; odata=nometadata"
     http.send
     
     If http.Status <> 200 Then
-        MsgBox "ContextInfo取得エラー: " & http.Status & vbCrLf & http.responseText, vbCritical
+        MsgBox "接続エラーですっ…。"
         Exit Sub
     End If
     
-    ' 【VBA特有処理】JSONパーサーを使わずInStr/MidでFormDigestValueを抽出
     responseText = http.responseText
-    Dim searchKey As String
-    Dim startPos As Long
-    Dim endPos As Long
+    startPos = InStr(responseText, """FormDigestValue"":""") + 19
+    endPos = InStr(startPos, responseText, """")
+    formDigest = Mid(responseText, startPos, endPos - startPos)
     
-    searchKey = """FormDigestValue"":"""
-    startPos = InStr(responseText, searchKey)
-    If startPos > 0 Then
-        startPos = startPos + Len(searchKey)
-        endPos = InStr(startPos, responseText, """")
-        digest = Mid(responseText, startPos, endPos - startPos)
-    Else
-        MsgBox "FormDigestValueが見つかりませんでした。", vbCritical
-        Exit Sub
-    End If
-    
-    ' --------------------------------------------------------
-    ' Step 2: コピー元フォルダ一覧の取得
-    ' --------------------------------------------------------
-    Dim getUrl As String
-    ' 厳守ルール1: 内部名 FSObjType を使用してフォルダ(1)のみを取得
-    getUrl = siteUrl & "/_api/web/GetList('" & sourceLibUrl & "')/items?$select=Folder/ServerRelativeUrl&$expand=Folder&$filter=FSObjType eq 1"
+    ' ② コピー元のフォルダ一覧を取得しますっ（ファイルは除外します）
+    getUrl = siteUrl & "/_api/web/lists/getbytitle('" & sourceLib & "')/items?$expand=Folder&$select=Folder/ServerRelativeUrl&$filter=FSObjType eq 1"
     
     http.Open "GET", getUrl, False
-    http.setRequestHeader "Accept", "application/json;odata=nometadata"
-    If accessToken <> "" Then http.setRequestHeader "Authorization", "Bearer " & accessToken
+    http.setRequestHeader "Accept", "application/json; odata=nometadata"
     http.send
     
-    If http.Status <> 200 Then
-        MsgBox "フォルダ一覧取得エラー: " & http.Status & vbCrLf & http.responseText, vbCritical
-        Exit Sub
-    End If
-    
-    responseText = http.responseText
-    
-    ' 【VBA特有処理】正規表現を用いて複数のServerRelativeUrlを配列に抽出
-    Dim regEx As Object
+    ' お返事の中から、フォルダのURL（ServerRelativeUrl）だけを探し出します！
     Set regEx = CreateObject("VBScript.RegExp")
     regEx.Global = True
-    regEx.IgnoreCase = True
-    ' 抽出パターン: "ServerRelativeUrl":"(ここを抽出)"
     regEx.Pattern = """ServerRelativeUrl"":""([^""]+)"""
     
-    Dim matches As Object
-    Set matches = regEx.Execute(responseText)
+    Set matches = regEx.Execute(http.responseText)
+    folderCount = matches.Count
     
-    Dim matchCount As Long
-    matchCount = matches.Count
-    If matchCount = 0 Then
-        MsgBox "コピー元にフォルダが存在しないか、取得できませんでした。", vbExclamation
+    If folderCount = 0 Then
+        MsgBox "コピー元のライブラリにフォルダが見つかりませんでしたっ。"
         Exit Sub
     End If
     
-    Dim folderUrls() As String
-    ReDim folderUrls(0 To matchCount - 1)
-    
-    Dim i As Long
-    For i = 0 To matchCount - 1
-        folderUrls(i) = matches.Item(i).SubMatches(0)
+    ' 見つかったURLを配列（リスト）にしまいます
+    ReDim folderUrls(folderCount - 1)
+    For i = 0 To folderCount - 1
+        folderUrls(i) = matches(i).SubMatches(0)
     Next i
     
-    ' 親フォルダから順に作成するため、URL文字列の長さでソート（バブルソート）
-    Dim j As Long
-    Dim temp As String
-    For i = 0 To matchCount - 2
-        For j = i + 1 To matchCount - 1
+    ' ③ 親フォルダから順番に作るために、文字数が短い順に並び替えますっ
+    For i = 0 To folderCount - 2
+        For j = i + 1 To folderCount - 1
             If Len(folderUrls(i)) > Len(folderUrls(j)) Then
-                temp = folderUrls(i)
+                tempUrl = folderUrls(i)
                 folderUrls(i) = folderUrls(j)
-                folderUrls(j) = temp
+                folderUrls(j) = tempUrl
             End If
         Next j
     Next i
     
-    ' --------------------------------------------------------
-    ' Step 3: コピー先へフォルダ作成
-    ' --------------------------------------------------------
-    Dim targetUrl As String
-    Dim payload As String
+    ' ④ 順番通りにコピー先へフォルダを作っていきます…！
+    postUrl = siteUrl & "/_api/web/folders"
     
-    For i = 0 To matchCount - 1
-        ' コピー元のパスをコピー先に置換
-        targetUrl = Replace(folderUrls(i), sourceLibUrl, destLibUrl, 1, 1, vbTextCompare)
+    For i = 0 To folderCount - 1
+        ' URLの中の「コピー元」の名前を「コピー先」にすり替えます
+        newUrl = Replace(folderUrls(i), "/" & sourceLib, "/" & destLib)
         
-        ' JSONペイロードの作成
-        payload = "{""__metadata"":{""type"":""SP.Folder""},""ServerRelativeUrl"":""" & targetUrl & """}"
+        http.Open "POST", postUrl, False
+        http.setRequestHeader "Accept", "application/json; odata=nometadata"
+        http.setRequestHeader "Content-Type", "application/json; odata=verbose"
+        http.setRequestHeader "X-RequestDigest", formDigest
         
-        http.Open "POST", siteUrl & "/_api/web/folders", False
-        http.setRequestHeader "Accept", "application/json;odata=verbose"
-        http.setRequestHeader "Content-Type", "application/json;odata=verbose"
-        http.setRequestHeader "X-RequestDigest", digest ' 厳守ルール3: ダイジェスト付与
-        If accessToken <> "" Then http.setRequestHeader "Authorization", "Bearer " & accessToken
+        ' フォルダを作るためのお願いの文章（JSON）です
+        Dim postData As String
+        postData = "{""__metadata"":{""type"":""SP.Folder""},""ServerRelativeUrl"":""" & newUrl & """}"
         
-        http.send payload
-        
-        If http.Status = 200 Or http.Status = 201 Then
-            Debug.Print "作成成功: " & targetUrl
-        Else
-            Debug.Print "作成失敗 (" & http.Status & "): " & targetUrl
-        End If
+        http.send postData
     Next i
     
-    MsgBox "フォルダ構造のコピー処理が完了しました。" & vbCrLf & "※エラーなどの詳細はイミディエイト ウィンドウ (Ctrl+G) を確認してください。", vbInformation
+    MsgBox folderCount & " 個のフォルダ構成を、無事にコピーしましたっ…！"
     
+    Set regEx = Nothing
+    Set http = Nothing
 End Sub
