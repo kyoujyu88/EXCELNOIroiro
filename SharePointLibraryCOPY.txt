@@ -15,14 +15,14 @@ Sub CopyFolderStructureSameLib()
     Dim createdCount As Integer
     
     ' --------------------------------------------------------
-    ' ★設定エリア（環境に合わせて書き換えてくださいね）
+    ' ★設定エリア（写真のパスに合わせて変更しましたっ）
     ' --------------------------------------------------------
-    siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin/HQ/sinsa"
-    libName = "対象のライブラリ名" ' 例: "Shared Documents"
+    siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin" ' ← NAFin までにしました
+    libName = "DocLib11" ' ← ライブラリ名です
     
-    ' スラッシュ(/)を頭につけておくと、似た名前の別フォルダを間違えてコピーするのを防げます！
-    sourceFolder = "/コピー元のフォルダ名" ' 例: "/テンプレート用"
-    destFolder = "/新しく作るフォルダ名"   ' 例: "/2026年度プロジェクト"
+    ' スラッシュ(/)を頭につけておくと、間違えて別のフォルダを巻き込むのを防げます
+    sourceFolder = "/令和５年度" ' 例: コピー元のフォルダ名
+    destFolder = "/令和８年度"   ' 例: 新しく作るフォルダ名
     
     Set http = CreateObject("MSXML2.XMLHTTP")
     
@@ -33,7 +33,7 @@ Sub CopyFolderStructureSameLib()
     http.send
     
     If http.Status <> 200 Then
-        MsgBox "接続エラーですっ…。"
+        MsgBox "サイトへの接続エラーですっ…。" & vbCrLf & "ステータス: " & http.Status
         Exit Sub
     End If
     
@@ -48,6 +48,15 @@ Sub CopyFolderStructureSameLib()
     http.Open "GET", getUrl, False
     http.setRequestHeader "Accept", "application/json; odata=nometadata"
     http.send
+    
+    ' --------------------------------------------------------
+    ' ★ 追加したエラーチェックですっ！
+    ' --------------------------------------------------------
+    If http.Status <> 200 Then
+        MsgBox "ライブラリの取得に失敗しましたっ…。" & vbCrLf & "ステータス: " & http.Status & vbCrLf & http.responseText
+        Exit Sub
+    End If
+    ' --------------------------------------------------------
     
     ' お返事の中から、フォルダのURLだけを探し出します
     Set regEx = CreateObject("VBScript.RegExp")
