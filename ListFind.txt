@@ -1,4 +1,4 @@
-Sub GetItemBodyByTitle_PlainText()
+Sub GetTableFromItemBody()
     Dim http As Object
     Dim siteUrl As String, listName As String
     Dim targetTitle As String, internalBodyName As String
@@ -6,9 +6,12 @@ Sub GetItemBodyByTitle_PlainText()
     Dim responseText As String
     Dim bodyContent As String
     
-    ' JavaScriptエンジン関連の変数です
+    ' JavaScriptエンジンと、表を読み解くための変数ですっ
     Dim htmlDoc As Object, jsWindow As Object
-    Dim tempDiv As Object ' ★ タグをお掃除するための秘密道具（透明な箱）ですっ
+    Dim tables As Object, targetTable As Object
+    Dim tblRow As Object, tblCell As Object
+    Dim ws As Worksheet
+    Dim r As Long, c As Long
     
     ' --------------------------------------------------------
     ' ★設定エリア
@@ -17,6 +20,9 @@ Sub GetItemBodyByTitle_PlainText()
     listName = "実際のリストのタイトル"
     targetTitle = "探したいタイトルを入力します"
     internalBodyName = "本文の内部名" 
+    
+    ' 書き出すエクセルのシートを指定します（例：Sheet1）
+    Set ws = ThisWorkbook.Sheets("Sheet1")
     
     Set http = CreateObject("MSXML2.XMLHTTP")
     encodedTitle = WorksheetFunction.EncodeURL(targetTitle)
@@ -53,33 +59,53 @@ Sub GetItemBodyByTitle_PlainText()
                         "  } return ''; " & _
                         "}", "JScript"
                         
+    ' タグ付きの生データを受け取ります
     bodyContent = jsWindow.getJsonData(responseText, internalBodyName)
     
     ' --------------------------------------------------------
-    ' ★ 追加：タグを綺麗にお掃除して、ただの文字にしますっ！
+    ' ★ ここから、表（テーブル）を探してエクセルに書き出しますっ！
     ' --------------------------------------------------------
     If bodyContent <> "" Then
-        ' 1. 透明な箱（div）を作って、そこに一度タグ付きの文章を流し込みます
-        Set tempDiv = htmlDoc.createElement("div")
-        tempDiv.innerHTML = bodyContent
+        ' 透明な箱に、受け取った文章をすべて流し込みます
+        htmlDoc.body.innerHTML = bodyContent
         
-        ' 2. そして、箱の中から「ただの文字（innerText）」だけを抜き出しますっ！
-        bodyContent = tempDiv.innerText
-    End If
-    ' --------------------------------------------------------
-    
-    ' 読み取った結果の表示ですっ
-    If bodyContent = "" Or IsNull(bodyContent) Then
-        MsgBox "アイテムは見つかりましたが、本文が空っぽか、読み取れませんでしたっ…。"
+        ' 文章の中から、<table>タグを探し出します！
+        Set tables = htmlDoc.getElementsByTagName("table")
+        
+        If tables.Length > 0 Then
+            ' 最初の表（0番目）をターゲットにしますっ
+            Set targetTable = tables(0)
+            
+            ' エクセルを一度きれいにお掃除します
+            ws.Cells.Clear
+            
+            r = 1 ' エクセルの1行目からスタートします
+            
+            ' 表の行（tr）を上から順番に見ていきます
+            For Each tblRow In targetTable.Rows
+                c = 1 ' エクセルの1列目（A列）からスタートします
+                
+                ' 行の中のマス目（tdやth）を左から順番に見ていきます
+                For Each tblCell In tblRow.Cells
+                    ' マス目の中の文字だけを、エクセルのセルに書き込みますっ！
+                    ws.Cells(r, c).Value = tblCell.innerText
+                    c = c + 1
+                Next tblCell
+                
+                r = r + 1 ' 次の行へ進みます
+            Next tblRow
+            
+            MsgBox "見つかりましたっ！表のデータをエクセルに書き出しました…！"
+            
+        Else
+            MsgBox "本文は読み取れましたが、中に表（テーブル）が見つかりませんでしたっ…。"
+        End If
     Else
-        ' タグが消えてスッキリしたので、メッセージボックスでお見せしますね
-        MsgBox "見つかりましたっ！タグを取り除いた本文はこちらです：" & vbCrLf & vbCrLf & bodyContent
-        
-        ' もしまた長すぎて見づらい時は、こちらの先頭の「'」を消して、セルに書き出してくださいっ
-        ' ThisWorkbook.Sheets("Sheet1").Range("A1").Value = bodyContent
+        MsgBox "アイテムは見つかりましたが、本文が空っぽか、読み取れませんでしたっ…。"
     End If
     
-    Set tempDiv = Nothing
+    Set tables = Nothing
+    Set targetTable = Nothing
     Set jsWindow = Nothing
     Set htmlDoc = Nothing
     Set http = Nothing
