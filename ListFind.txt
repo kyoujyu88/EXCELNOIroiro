@@ -1,30 +1,26 @@
-Sub GetItemBodyByTitle()
+Sub GetItemBodyByTitle_Safe()
     Dim http As Object
     Dim siteUrl As String, listName As String
     Dim targetTitle As String, internalBodyName As String
     Dim getUrl As String, encodedTitle As String
     Dim responseText As String
-    Dim regEx As Object, matches As Object
     Dim bodyContent As String
     
+    ' JavaScriptエンジンを呼び出すための変数ですっ
+    Dim htmlDoc As Object, jsWindow As Object
+    
     ' --------------------------------------------------------
-    ' ★設定エリア（篤志さんの環境に合わせて書き換えてくださいねっ）
+    ' ★設定エリア
     ' --------------------------------------------------------
     siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin"
     listName = "実際のリストのタイトル"
-    
-    ' 探したいアイテムのタイトル（一部の文字だけでも大丈夫ですっ！）
     targetTitle = "探したいタイトルを入力します"
-    
-    ' 本文の「内部名」を指定します（例: Body など）
     internalBodyName = "本文の内部名" 
     
     Set http = CreateObject("MSXML2.XMLHTTP")
-    
-    ' ① タイトルの日本語を、URLで使える安全な記号に変換しますっ
     encodedTitle = WorksheetFunction.EncodeURL(targetTitle)
     
-    ' ② substringof を使って、タイトルが含まれるものを探しますっ！
+    ' urlを作ります（substringof で部分一致にしています）
     getUrl = siteUrl & "/_api/web/lists/getbytitle('" & listName & "')/items?$select=Title," & internalBodyName & "&$filter=substringof('" & encodedTitle & "', Title)"
     
     http.Open "GET", getUrl, False
@@ -38,63 +34,45 @@ Sub GetItemBodyByTitle()
     
     responseText = http.responseText
     
-    ' ③ 見つからなかった場合（valueの中身が空っぽ）のチェックです
     If InStr(responseText, """value"":[]") > 0 Then
         MsgBox "「" & targetTitle & "」が含まれるタイトルのアイテムは見つかりませんでしたっ…。"
         Exit Sub
     End If
     
-    ' ④ 正規表現で、本文の内容だけを切り出しますっ
-    Set regEx = CreateObject("VBScript.RegExp")
-    regEx.Global = False
-    regEx.IgnoreCase = True
+    ' --------------------------------------------------------
+    ' ★ 正規表現の代わりに、JavaScriptエンジンに読んでもらいますっ！
+    ' --------------------------------------------------------
+    Set htmlDoc = CreateObject("htmlfile")
+    ' 最新の解読機能（JSON.parse）を使えるようにするおまじないです
+    htmlDoc.Write "<meta http-equiv='X-UA-Compatible' content='IE=edge'>"
+    Set jsWindow = htmlDoc.parentWindow
     
-    ' "内部名":"内容" の「内容」の部分を抜き出すためのパターンです
-    regEx.Pattern = """" & internalBodyName & """\s*:\s*""((?:[^""\\]|\\[\s\S])*?)"""
+    ' JSONを安全に読み解くための専用の関数を、VBAの中に作ってしまいます
+    jsWindow.execScript "function getJsonData(jsonString, keyName) { " & _
+                        "  var obj = JSON.parse(jsonString); " & _
+                        "  if (obj.value && obj.value.length > 0) { " & _
+                        "    return obj.value[0][keyName]; " & _
+                        "  } return ''; " & _
+                        "}", "JScript"
+                        
+    ' 作った関数に、SharePointからのお返事と、欲しい列の名前を渡します
+    ' （※ どんなに長い表でも、文字化けも改行も、すべて完璧に解読してくれますっ！）
+    bodyContent = jsWindow.getJsonData(responseText, internalBodyName)
     
-    Set matches = regEx.Execute(responseText)
-    
-    If matches.Count > 0 Then
-        bodyContent = matches(0).SubMatches(0)
-        
-        ' --------------------------------------------------------
-        ' ⑤ 抜き出した本文を、タグ付きのまま整えますっ！
-        ' --------------------------------------------------------
-        ' 魔法の翻訳機で日本語や、タグの記号（\u003cなど）を元の形に戻します
-        bodyContent = DecodeUnicode(bodyContent)
-        
-        ' JSON特有のシステム改行コード（\r\n や \n）を、VBAの改行に直します
-        bodyContent = Replace(bodyContent, "\r\n", vbCrLf)
-        bodyContent = Replace(bodyContent, "\n", vbCrLf)
-        
-        ' エスケープされた引用符（\"）を普通の引用符（"）に戻します
-        bodyContent = Replace(bodyContent, "\""", """")
-        
-        ' ★ HTMLタグはそのままで、メッセージボックスに表示しますっ！
-        MsgBox "見つかりましたっ！本文の内容はこちらです：" & vbCrLf & vbCrLf & bodyContent
+    ' --------------------------------------------------------
+    ' ★ 読み取った結果の表示です
+    ' --------------------------------------------------------
+    If bodyContent = "" Or IsNull(bodyContent) Then
+        MsgBox "アイテムは見つかりましたが、本文が空っぽか、読み取れませんでしたっ…。"
     Else
-        MsgBox "アイテムは見つかりましたが、本文が空っぽか、読み取れませんでしたっ…。内部名が間違っていないか確認してみてくださいね。"
+        ' 表が入っていると文字数が多すぎて、メッセージボックスから
+        ' はみ出してしまうかもしれないので、A1セルに直接書き出すのがおすすめですっ！
+        ThisWorkbook.Sheets("Sheet1").Range("A1").Value = bodyContent
+        
+        MsgBox "見つかりましたっ！長かったので、Sheet1のA1セルに本文を書き出しました…！"
     End If
     
-    Set regEx = Nothing
+    Set jsWindow = Nothing
+    Set htmlDoc = Nothing
     Set http = Nothing
 End Sub
-
-' --------------------------------------------------------
-' ★ SharePointからの暗号（\uXXXX）を日本語やタグの記号に翻訳する関数です
-' --------------------------------------------------------
-Function DecodeUnicode(ByVal strText As String) As String
-    Dim regEx As Object, matches As Object, match As Object
-    Set regEx = CreateObject("VBScript.RegExp")
-    regEx.Global = True
-    regEx.IgnoreCase = True
-    
-    regEx.Pattern = "\\u([0-9A-Fa-f]{4})"
-    
-    Set matches = regEx.Execute(strText)
-    For Each match In matches
-        strText = Replace(strText, match.Value, ChrW(CLng("&H" & match.SubMatches(0))))
-    Next match
-    
-    DecodeUnicode = strText
-End Function
