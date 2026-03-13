@@ -1,4 +1,4 @@
-Sub GetItemBodyByTitle_Safe()
+Sub GetItemBodyByTitle_PlainText()
     Dim http As Object
     Dim siteUrl As String, listName As String
     Dim targetTitle As String, internalBodyName As String
@@ -6,8 +6,9 @@ Sub GetItemBodyByTitle_Safe()
     Dim responseText As String
     Dim bodyContent As String
     
-    ' JavaScriptエンジンを呼び出すための変数ですっ
+    ' JavaScriptエンジン関連の変数です
     Dim htmlDoc As Object, jsWindow As Object
+    Dim tempDiv As Object ' ★ タグをお掃除するための秘密道具（透明な箱）ですっ
     
     ' --------------------------------------------------------
     ' ★設定エリア
@@ -20,7 +21,6 @@ Sub GetItemBodyByTitle_Safe()
     Set http = CreateObject("MSXML2.XMLHTTP")
     encodedTitle = WorksheetFunction.EncodeURL(targetTitle)
     
-    ' urlを作ります（substringof で部分一致にしています）
     getUrl = siteUrl & "/_api/web/lists/getbytitle('" & listName & "')/items?$select=Title," & internalBodyName & "&$filter=substringof('" & encodedTitle & "', Title)"
     
     http.Open "GET", getUrl, False
@@ -40,14 +40,12 @@ Sub GetItemBodyByTitle_Safe()
     End If
     
     ' --------------------------------------------------------
-    ' ★ 正規表現の代わりに、JavaScriptエンジンに読んでもらいますっ！
+    ' JavaScriptエンジンで、まずは安全に解読しますっ
     ' --------------------------------------------------------
     Set htmlDoc = CreateObject("htmlfile")
-    ' 最新の解読機能（JSON.parse）を使えるようにするおまじないです
     htmlDoc.Write "<meta http-equiv='X-UA-Compatible' content='IE=edge'>"
     Set jsWindow = htmlDoc.parentWindow
     
-    ' JSONを安全に読み解くための専用の関数を、VBAの中に作ってしまいます
     jsWindow.execScript "function getJsonData(jsonString, keyName) { " & _
                         "  var obj = JSON.parse(jsonString); " & _
                         "  if (obj.value && obj.value.length > 0) { " & _
@@ -55,23 +53,33 @@ Sub GetItemBodyByTitle_Safe()
                         "  } return ''; " & _
                         "}", "JScript"
                         
-    ' 作った関数に、SharePointからのお返事と、欲しい列の名前を渡します
-    ' （※ どんなに長い表でも、文字化けも改行も、すべて完璧に解読してくれますっ！）
     bodyContent = jsWindow.getJsonData(responseText, internalBodyName)
     
     ' --------------------------------------------------------
-    ' ★ 読み取った結果の表示です
+    ' ★ 追加：タグを綺麗にお掃除して、ただの文字にしますっ！
     ' --------------------------------------------------------
+    If bodyContent <> "" Then
+        ' 1. 透明な箱（div）を作って、そこに一度タグ付きの文章を流し込みます
+        Set tempDiv = htmlDoc.createElement("div")
+        tempDiv.innerHTML = bodyContent
+        
+        ' 2. そして、箱の中から「ただの文字（innerText）」だけを抜き出しますっ！
+        bodyContent = tempDiv.innerText
+    End If
+    ' --------------------------------------------------------
+    
+    ' 読み取った結果の表示ですっ
     If bodyContent = "" Or IsNull(bodyContent) Then
         MsgBox "アイテムは見つかりましたが、本文が空っぽか、読み取れませんでしたっ…。"
     Else
-        ' 表が入っていると文字数が多すぎて、メッセージボックスから
-        ' はみ出してしまうかもしれないので、A1セルに直接書き出すのがおすすめですっ！
-        ThisWorkbook.Sheets("Sheet1").Range("A1").Value = bodyContent
+        ' タグが消えてスッキリしたので、メッセージボックスでお見せしますね
+        MsgBox "見つかりましたっ！タグを取り除いた本文はこちらです：" & vbCrLf & vbCrLf & bodyContent
         
-        MsgBox "見つかりましたっ！長かったので、Sheet1のA1セルに本文を書き出しました…！"
+        ' もしまた長すぎて見づらい時は、こちらの先頭の「'」を消して、セルに書き出してくださいっ
+        ' ThisWorkbook.Sheets("Sheet1").Range("A1").Value = bodyContent
     End If
     
+    Set tempDiv = Nothing
     Set jsWindow = Nothing
     Set htmlDoc = Nothing
     Set http = Nothing
