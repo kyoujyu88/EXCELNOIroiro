@@ -50,7 +50,7 @@ Sub GetItemBodyByTitle()
     regEx.IgnoreCase = True
     
     ' "内部名":"内容" の「内容」の部分を抜き出すためのパターンです
-    regEx.Pattern = """" & internalBodyName & """\s*:\s*""(.*?)"""
+    regEx.Pattern = """" & internalBodyName & """\s*:\s*""((?:[^""\\]|\\[\s\S])*?)"""
     
     Set matches = regEx.Execute(responseText)
     
