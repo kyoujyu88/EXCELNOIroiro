@@ -8,15 +8,15 @@ Sub GetItemBodyByTitle()
     Dim bodyContent As String
     
     ' --------------------------------------------------------
-    ' ★設定エリア（篤志さんの環境に合わせて書き換えてくださいね）
+    ' ★設定エリア（篤志さんの環境に合わせて書き換えてくださいねっ）
     ' --------------------------------------------------------
     siteUrl = "https://na-n.gbase.gsdf.mod.go.jp/na/NA/NAFin"
     listName = "実際のリストのタイトル"
     
-    ' 探したいアイテムのタイトルを指定しますっ
+    ' 探したいアイテムのタイトル（一部の文字だけでも大丈夫ですっ！）
     targetTitle = "探したいタイトルを入力します"
     
-    ' 本文の「内部名」を指定します（例: Body や OData__x672c__x6587_ など）
+    ' 本文の「内部名」を指定します（例: Body など）
     internalBodyName = "本文の内部名" 
     
     Set http = CreateObject("MSXML2.XMLHTTP")
@@ -24,8 +24,8 @@ Sub GetItemBodyByTitle()
     ' ① タイトルの日本語を、URLで使える安全な記号に変換しますっ
     encodedTitle = WorksheetFunction.EncodeURL(targetTitle)
     
-    ' ② $filter を使って、タイトルが一致するものだけを狙い撃ちします！
-    getUrl = siteUrl & "/_api/web/lists/getbytitle('" & listName & "')/items?$select=Title," & internalBodyName & "&$filter=Title eq '" & encodedTitle & "'"
+    ' ② substringof を使って、タイトルが含まれるものを探しますっ！
+    getUrl = siteUrl & "/_api/web/lists/getbytitle('" & listName & "')/items?$select=Title," & internalBodyName & "&$filter=substringof('" & encodedTitle & "', Title)"
     
     http.Open "GET", getUrl, False
     http.setRequestHeader "Accept", "application/json; odata=nometadata"
@@ -40,7 +40,7 @@ Sub GetItemBodyByTitle()
     
     ' ③ 見つからなかった場合（valueの中身が空っぽ）のチェックです
     If InStr(responseText, """value"":[]") > 0 Then
-        MsgBox "「" & targetTitle & "」というタイトルのアイテムは見つかりませんでしたっ…。"
+        MsgBox "「" & targetTitle & "」が含まれるタイトルのアイテムは見つかりませんでしたっ…。"
         Exit Sub
     End If
     
@@ -58,18 +58,19 @@ Sub GetItemBodyByTitle()
         bodyContent = matches(0).SubMatches(0)
         
         ' --------------------------------------------------------
-        ' ⑤ 抜き出した本文を、綺麗な日本語に整えますっ！
+        ' ⑤ 抜き出した本文を、タグ付きのまま整えますっ！
         ' --------------------------------------------------------
-        ' 魔法の翻訳機で日本語（\uXXXX）を戻します
+        ' 魔法の翻訳機で日本語や、タグの記号（\u003cなど）を元の形に戻します
         bodyContent = DecodeUnicode(bodyContent)
         
-        ' JSON特有の改行コード（\r\n や \n）を、VBAの改行に直します
+        ' JSON特有のシステム改行コード（\r\n や \n）を、VBAの改行に直します
         bodyContent = Replace(bodyContent, "\r\n", vbCrLf)
         bodyContent = Replace(bodyContent, "\n", vbCrLf)
         
         ' エスケープされた引用符（\"）を普通の引用符（"）に戻します
         bodyContent = Replace(bodyContent, "\""", """")
         
+        ' ★ HTMLタグはそのままで、メッセージボックスに表示しますっ！
         MsgBox "見つかりましたっ！本文の内容はこちらです：" & vbCrLf & vbCrLf & bodyContent
     Else
         MsgBox "アイテムは見つかりましたが、本文が空っぽか、読み取れませんでしたっ…。内部名が間違っていないか確認してみてくださいね。"
@@ -80,8 +81,7 @@ Sub GetItemBodyByTitle()
 End Sub
 
 ' --------------------------------------------------------
-' ★ SharePointからの暗号（\uXXXX）を日本語に翻訳する関数です
-' （※前回と同じものです。モジュールの中に1つあれば大丈夫ですっ）
+' ★ SharePointからの暗号（\uXXXX）を日本語やタグの記号に翻訳する関数です
 ' --------------------------------------------------------
 Function DecodeUnicode(ByVal strText As String) As String
     Dim regEx As Object, matches As Object, match As Object
