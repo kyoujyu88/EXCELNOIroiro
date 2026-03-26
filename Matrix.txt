@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Matrix Rain</title>
+    <style>
+        /* 画面の余白をなくし、背景を黒にする */
+        body { margin: 0; background: black; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="matrix"></canvas>
+
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+
+        // ウィンドウのサイズに合わせる
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 降ってくる文字（アルファベット、数字、記号）
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()';
+        const fontSize = 16;
+        const columns = canvas.width / fontSize;
+
+        // 文字の落ちる位置を記録する配列
+        const drops = [];
+        for (let x = 0; x < columns; x++) {
+            drops[x] = 1;
+        }
+
+        function draw() {
+            // 背景を半透明の黒で塗りつぶすことで、文字が徐々に消える残像エフェクトを作る
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 文字の色とフォント
+            ctx.fillStyle = '#0F0'; // マトリックスグリーンのカラーコード
+            ctx.font = fontSize + 'px monospace';
+
+            // 各列について文字を描画
+            for (let i = 0; i < drops.length; i++) {
+                // ランダムな文字を一つ選ぶ
+                const text = chars.charAt(Math.floor(Math.random() * chars.length));
+                
+                // 文字を描画
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                // 画面の下まで行ったら、ランダムなタイミングで上に戻す
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                // Y座標（落ちる位置）を下へ進める
+                drops[i]++;
+            }
+        }
+
+        // 33ミリ秒ごとに画面を更新（約30FPS）
+        setInterval(draw, 33);
+
+        // ウィンドウサイズが変更されたらキャンバスサイズも合わせる
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>
