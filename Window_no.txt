@@ -1,0 +1,55 @@
+# 必要な機能（画面描画用）を読み込み
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$screens = [System.Windows.Forms.Screen]::AllScreens
+$forms = @()
+$i = 1
+
+# 各モニターに対して番号を表示するウィンドウを作成
+foreach ($screen in $screens) {
+    $form = New-Object System.Windows.Forms.Form
+    $form.StartPosition = 'Manual'
+    
+    # モニターの左上に配置 (少し内側にずらして見やすくしています)
+    $posX = $screen.Bounds.X + 50
+    $posY = $screen.Bounds.Y + 50
+    $form.Location = New-Object System.Drawing.Point($posX, $posY)
+    
+    # ウィンドウの見た目設定
+    $form.Size = New-Object System.Drawing.Size(300, 300)
+    $form.FormBorderStyle = 'None' # 枠なし
+    $form.TopMost = $true          # 最前面に表示
+    $form.BackColor = 'Navy'       # 背景色を濃い青に
+    $form.Opacity = 0.85           # 少し半透明にする
+
+    # 表示する数字（ラベル）の設定
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = $i.ToString()
+    $label.Font = New-Object System.Drawing.Font("Meiryo", 150, [System.Drawing.FontStyle]::Bold)
+    $label.ForeColor = 'White'
+    $label.Dock = 'Fill'
+    $label.TextAlign = 'MiddleCenter'
+
+    $form.Controls.Add($label)
+    $form.Show()
+    $forms += $form
+    $i++
+}
+
+Write-Host "画面に番号を表示しています... (10秒後に自動で消えます)"
+
+# 10秒間待機（その間も画面が固まらないように描画を維持）
+$endTime = (Get-Date).AddSeconds(10)
+while ((Get-Date) -lt $endTime) {
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 100
+}
+
+# 10秒経過したらすべてのウィンドウを閉じる
+foreach ($form in $forms) {
+    $form.Close()
+    $form.Dispose()
+}
+
+Write-Host "表示を終了しました。"
