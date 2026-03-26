@@ -1,5 +1,46 @@
-@echo off
-color 0A
-:matrix
-echo %random% %random% %random% %random% %random% %random% %random% %random% %random% %random% %random% %random% %random% %random%
-goto matrix
+# ターミナルの色を設定
+$Host.UI.RawUI.BackgroundColor = "Black"
+Clear-Host
+
+# 画面上部のそれっぽいヘッダー
+Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host "  Automated System Monitor & Data Sync Terminal" -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host "サービス開始..." -ForegroundColor Gray
+Start-Sleep -Seconds 1
+
+# ランダムに表示させるメッセージのリスト
+$messages = @(
+    "INFO: 勤怠管理システムのバックグラウンド同期を実行中...",
+    "NET: ネットワークのルーティング状態を監視... [OK]",
+    "SYS: SharePointリストとのAPI通信を確認...",
+    "DATA: 財務データの整合性チェックをパスしました",
+    "SEC: セキュリティプロトコルとアクセスログを検証中...",
+    "WARN: 一部パケットの遅延を検知... 再要求を送信 [解決]",
+    "INFO: ローカルキャッシュの最適化処理を完了",
+    "SYS: メモリリソースの割り当てを再構成しています..."
+)
+
+$colors = @("Green", "Cyan", "Gray", "Yellow", "White")
+
+# 無限ループでログを流し続ける
+while ($true) {
+    $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $msg = $messages | Get-Random
+    $col = $colors | Get-Random
+
+    # たまに「処理中」の演出（...）を入れる
+    if ((Get-Random -Minimum 1 -Maximum 10) -gt 7) {
+        Write-Host "[$time] PROCESS: データをフェッチしています" -NoNewline -ForegroundColor White
+        for ($i = 0; $i -lt 3; $i++) {
+            Start-Sleep -Milliseconds 400
+            Write-Host "." -NoNewline -ForegroundColor White
+        }
+        Write-Host " Done." -ForegroundColor Green
+    } else {
+        Write-Host "[$time] $msg" -ForegroundColor $col
+    }
+
+    # 次の表示までランダムに待機（0.5秒 ～ 2.5秒）
+    Start-Sleep -Milliseconds (Get-Random -Minimum 500 -Maximum 2500)
+}
