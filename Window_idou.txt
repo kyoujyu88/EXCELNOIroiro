@@ -1,0 +1,51 @@
+# スクリーン情報を取得するためにアセンブリを読み込み
+Add-Type -AssemblyName System.Windows.Forms
+
+# ウィンドウ操作用のAPI定義（移動用と表示状態切替用）
+$signature = @"
+[DllImport("user32.dll")]
+public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+[DllImport("user32.dll")]
+public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+"@
+$WinAPI = Add-Type -MemberDefinition $signature -Name "WinAPI" -Namespace Win32Functions -PassThru
+
+# --- 設定：どのファイルをどのモニター（1, 2...）に送るか ---
+$rule = @{
+    "売上データ" = 1  # 1番目のモニターへ
+    "予算管理"   = 2  # 2番目のモニターへ
+}
+
+# 全モニターの情報を取得
+$screens = [System.Windows.Forms.Screen]::AllScreens
+$SWP_NOSIZE = 0x0001
+$SWP_NOZORDER = 0x0004
+$SHOW_MAXIMIZED = 3 # 最大化を表す定数
+
+# Excelプロセスの取得と移動処理
+$excelProcesses = Get-Process -Name "Excel" -ErrorAction SilentlyContinue
+
+foreach ($proc in $excelProcesses) {
+    $title = $proc.MainWindowTitle
+    if ($title) {
+        foreach ($key in $rule.Keys) {
+            if ($title -like "*$key*") {
+                $targetMonitorIndex = $rule[$key] - 1
+                
+                if ($targetMonitorIndex -lt $screens.Count) {
+                    $screen = $screens[$targetMonitorIndex]
+                    $targetX = $screen.Bounds.X
+                    $targetY = $screen.Bounds.Y
+                    
+                    Write-Host "[$title] をモニター $($targetMonitorIndex + 1) へ移動し、最大化します。"
+                    
+                    # 1. まず指定したモニターの座標へ移動（最大化解除状態でも動くように）
+                    $WinAPI::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, $targetX, $targetY, 0, 0, ($SWP_NOSIZE -bor $SWP_NOZORDER))
+                    
+                    # 2. その後、最大化を実行
+                    $WinAPI::ShowWindow($proc.MainWindowHandle, $SHOW_MAXIMIZED)
+                }
+            }
+        }
+    }
+}
