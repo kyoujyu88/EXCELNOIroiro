@@ -1,51 +1,95 @@
-# スクリーン情報を取得するためにアセンブリを読み込み
-Add-Type -AssemblyName System.Windows.Forms
+# 複数回実行してもエラーにならないよう、型が存在しない場合のみ定義する
+if (-not ("Win32.WindowAPI" -as [type])) {
+    Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
+    using System.Text;
+    using System.Collections.Generic;
 
-# ウィンドウ操作用のAPI定義（移動用と表示状態切替用）
-$signature = @"
-[DllImport("user32.dll")]
-public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-[DllImport("user32.dll")]
-public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-"@
-$WinAPI = Add-Type -MemberDefinition $signature -Name "WinAPI" -Namespace Win32Functions -PassThru
+    namespace Win32 {
+        public class WindowAPI {
+            [DllImport("user32.dll")]
+            public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-# --- 設定：どのファイルをどのモニター（1, 2...）に送るか ---
-$rule = @{
-    "売上データ" = 1  # 1番目のモニターへ
-    "予算管理"   = 2  # 2番目のモニターへ
+            [DllImport("user32.dll")]
+            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+            [DllImport("user32.dll")]
+            public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+            public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+            [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+            public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+            [DllImport("user32.dll", CharSet = CharSet.Auto)]
+            public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+            // Excelのウィンドウ(クラス名: XLMAIN)だけを安全にすべて抽出するメソッド
+            public static Dictionary<IntPtr, string> GetExcelWindows() {
+                Dictionary<IntPtr, string> windows = new Dictionary<IntPtr, string>();
+                EnumWindows(delegate (IntPtr hWnd, IntPtr lParam) {
+                    StringBuilder className = new StringBuilder(256);
+                    GetClassName(hWnd, className, className.Capacity);
+
+                    if (className.ToString() == "XLMAIN") {
+                        StringBuilder title = new StringBuilder(256);
+                        GetWindowText(hWnd, title, title.Capacity);
+                        windows[hWnd] = title.ToString();
+                    }
+                    return true;
+                }, IntPtr.Zero);
+                return windows;
+            }
+        }
+    }
+"@ -ReferencedAssemblies "System.Collections"
 }
 
-# 全モニターの情報を取得
+# スクリーン情報の取得
+Add-Type -AssemblyName System.Windows.Forms
 $screens = [System.Windows.Forms.Screen]::AllScreens
+
+# ウィンドウ表示状態と移動の定数
+$SW_RESTORE = 9    # 元のサイズに戻す
+$SW_MAXIMIZE = 3   # 最大化する
 $SWP_NOSIZE = 0x0001
 $SWP_NOZORDER = 0x0004
-$SHOW_MAXIMIZED = 3 # 最大化を表す定数
 
-# Excelプロセスの取得と移動処理
-$excelProcesses = Get-Process -Name "Excel" -ErrorAction SilentlyContinue
+# ==========================================
+# 設定：ファイル名の一部と、移動先のモニター番号
+# ==========================================
+$rule = @{
+    "売上データ" = 1  # 1番モニターへ
+    "予算管理"   = 2  # 2番モニターへ
+}
 
-foreach ($proc in $excelProcesses) {
-    $title = $proc.MainWindowTitle
-    if ($title) {
-        foreach ($key in $rule.Keys) {
-            if ($title -like "*$key*") {
-                $targetMonitorIndex = $rule[$key] - 1
+# Excelのウィンドウ一覧を取得
+$excelWindows = [Win32.WindowAPI]::GetExcelWindows()
+
+foreach ($hWnd in $excelWindows.Keys) {
+    $title = $excelWindows[$hWnd]
+
+    foreach ($key in $rule.Keys) {
+        # タイトルにキーワードが含まれているかチェック
+        if ($title -match $key) {
+            $targetMonitorIndex = $rule[$key] - 1
+
+            if ($targetMonitorIndex -ge 0 -and $targetMonitorIndex -lt $screens.Count) {
+                $screen = $screens[$targetMonitorIndex]
                 
-                if ($targetMonitorIndex -lt $screens.Count) {
-                    $screen = $screens[$targetMonitorIndex]
-                    $targetX = $screen.Bounds.X
-                    $targetY = $screen.Bounds.Y
-                    
-                    Write-Host "[$title] をモニター $($targetMonitorIndex + 1) へ移動し、最大化します。"
-                    
-                    # 1. まず指定したモニターの座標へ移動（最大化解除状態でも動くように）
-                    $WinAPI::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, $targetX, $targetY, 0, 0, ($SWP_NOSIZE -bor $SWP_NOZORDER))
-                    
-                    # 2. その後、最大化を実行
-                    $WinAPI::ShowWindow($proc.MainWindowHandle, $SHOW_MAXIMIZED)
-                }
+                Write-Host "移動処理中: [$title] -> モニター $($targetMonitorIndex + 1)"
+
+                # 1. 確実に移動させるため、まずは「元に戻す」(最大化解除)
+                [Win32.WindowAPI]::ShowWindow($hWnd, $SW_RESTORE) | Out-Null
+                Start-Sleep -Milliseconds 100 # ウィンドウが反応するまで一瞬待機
+                
+                # 2. 指定したモニターの左上座標に移動
+                [Win32.WindowAPI]::SetWindowPos($hWnd, [IntPtr]::Zero, $screen.Bounds.X, $screen.Bounds.Y, 0, 0, ($SWP_NOSIZE -bor $SWP_NOZORDER)) | Out-Null
+                
+                # 3. 移動先のモニターで「最大化」
+                [Win32.WindowAPI]::ShowWindow($hWnd, $SW_MAXIMIZE) | Out-Null
             }
         }
     }
 }
+Write-Host "処理が完了しました。"
