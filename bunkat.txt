@@ -1,0 +1,18 @@
+$inputPath = "largefile.dat"
+$outputPrefix = "part"
+$chunkSize = 100MB # 分割したいサイズ
+$reader = [System.IO.File]::OpenRead($inputPath)
+$buffer = New-Object byte[] $chunkSize
+$count = 0
+
+try {
+    while (($bytesRead = $reader.Read($buffer, 0, $buffer.Length)) -gt 0) {
+        $outputPath = "{0}{1}" -f $outputPrefix, $count
+        $writer = [System.IO.File]::OpenWrite($outputPath)
+        $writer.Write($buffer, 0, $bytesRead)
+        $writer.Close()
+        $count++
+    }
+} finally {
+    $reader.Close()
+}
