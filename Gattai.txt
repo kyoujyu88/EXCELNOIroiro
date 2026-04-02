@@ -1,30 +1,61 @@
-Sub MergeFiles()
+Sub MergeLargeFiles_Nagisa()
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
     Dim basePath As String, outputPath As String, partPath As String
+    Dim partSize As Double, readForPart As Double
+    Dim chunkSize As Long, readSize As Long
+    Dim partIndex As Integer, fileNumIn As Integer, fileNumOut As Integer
     Dim buffer() As Byte
-    Dim i As Integer, fileNum As Integer, outNum As Integer
     
     ' --- 設定 ---
-    basePath = "C:\temp\model.gguf" ' 元のファイル名（出力名）
+    basePath = "C:\temp\model.gguf"          ' 元のファイル名（探すためのベース）
+    outputPath = "C:\temp\merged_model.gguf" ' 合成後のファイル名
+    chunkSize = 50000000                     ' 1回の読み書きサイズ (50MB)
     ' ------------
     
-    outNum = FreeFile
-    Open basePath For Binary Access Write As #outNum
+    partPath = basePath & ".part" & partIndex
     
-    i = 0
-    Do
-        partPath = basePath & ".part" & i
-        If Dir(partPath) = "" Then Exit Do ' ファイルがなくなったら終了
+    If Not fso.FileExists(partPath) Then
+        MsgBox "最初の分割ファイル (.part0) が見つかりません……。", vbExclamation
+        Exit Sub
+    End If
+    
+    fileNumOut = FreeFile
+    Open outputPath For Binary Access Write As #fileNumOut
+    
+    ' .partファイルが存在する限り順番に処理する
+    Do While fso.FileExists(partPath)
+        partSize = fso.GetFile(partPath).Size
+        readForPart = 0
         
-        fileNum = FreeFile
-        Open partPath For Binary Access Read As #fileNum
-        ReDim buffer(LOF(fileNum) - 1)
-        Get #fileNum, , buffer
-        Close #fileNum
+        fileNumIn = FreeFile
+        Open partPath For Binary Access Read As #fileNumIn
         
-        Put #outNum, , buffer
-        i = i + 1
+        ' 1つの分割ファイルを少しずつ読み書きするループ
+        Do While readForPart < partSize
+            If (partSize - readForPart) < chunkSize Then
+                readSize = CLng(partSize - readForPart)
+            Else
+                readSize = chunkSize
+            End If
+            
+            ReDim buffer(readSize - 1)
+            Get #fileNumIn, , buffer
+            Put #fileNumOut, , buffer
+            
+            readForPart = readForPart + readSize
+        Loop
+        
+        Close #fileNumIn
+        
+        ' 次の連番ファイルへ
+        partIndex = partIndex + 1
+        partPath = basePath & ".part" & partIndex
     Loop
     
-    Close #outNum
-    MsgBox "合成が完了しました！"
+    Close #fileNumOut
+    Set fso = Nothing
+    
+    MsgBox "すべてのファイルの合成が完了しました！", vbInformation
 End Sub
