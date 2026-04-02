@@ -1,29 +1,69 @@
-Sub SplitFile()
-    Dim inputPath As String, outputPath As String
+Sub SplitLargeFile_Nagisa()
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    Dim inputPath As String, basePath As String
+    Dim totalSize As Double, partSize As Double
+    Dim totalRead As Double, writtenForPart As Double
+    Dim chunkSize As Long, readSize As Long
+    Dim partIndex As Integer, fileNumIn As Integer, fileNumOut As Integer
     Dim buffer() As Byte
-    Dim fileSize As Long, chunkSize As Long
-    Dim i As Long, fileNum As Integer, outNum As Integer
     
     ' --- 設定 ---
-    inputPath = "C:\temp\model.gguf" ' 分割したいファイル
-    chunkSize = 1024 * 1024 * 500    ' 500MBごとに分割
+    inputPath = "C:\temp\model.gguf"   ' 分割したい大きなファイル
+    partSize = 1000000000#             ' 1つの分割サイズ (例: 1GB。末尾の#はDouble型の印です)
+    chunkSize = 50000000               ' 1回の読み書きサイズ (例: 50MB。Long型に収まる安全な値)
     ' ------------
-
-    fileNum = FreeFile
-    Open inputPath For Binary Access Read As #fileNum
-    fileSize = LOF(fileNum)
     
-    For i = 0 To (fileSize \ chunkSize)
-        ReDim buffer(IIf(fileSize - (i * chunkSize) < chunkSize, fileSize - (i * chunkSize), chunkSize) - 1)
-        Get #fileNum, , buffer
+    If Not fso.FileExists(inputPath) Then
+        MsgBox "ファイルが見つかりません……。", vbExclamation
+        Exit Sub
+    End If
+    
+    basePath = inputPath
+    totalSize = fso.GetFile(inputPath).Size
+    
+    fileNumIn = FreeFile
+    Open inputPath For Binary Access Read As #fileNumIn
+    
+    ' 最初の分割ファイルを開く
+    fileNumOut = FreeFile
+    Open basePath & ".part" & partIndex For Binary Access Write As #fileNumOut
+    
+    ' ファイルの最後まで少しずつ読み書きするループ
+    Do While totalRead < totalSize
+        ' 今回読み込むサイズを計算 (残りサイズか、chunkSizeの小さい方)
+        If (totalSize - totalRead) < chunkSize Then
+            readSize = CLng(totalSize - totalRead)
+        Else
+            readSize = chunkSize
+        End If
         
-        outNum = FreeFile
-        outputPath = inputPath & ".part" & i
-        Open outputPath For Binary Access Write As #outNum
-        Put #outNum, , buffer
-        Close #outNum
-    Next i
+        ' 分割サイズをぴったり守るための調整
+        If (writtenForPart + readSize) > partSize Then
+            readSize = CLng(partSize - writtenForPart)
+        End If
+        
+        ReDim buffer(readSize - 1)
+        Get #fileNumIn, , buffer
+        Put #fileNumOut, , buffer
+        
+        totalRead = totalRead + readSize
+        writtenForPart = writtenForPart + readSize
+        
+        ' 指定サイズに達したら、ファイルを閉じて次の連番ファイルを作る
+        If writtenForPart >= partSize And totalRead < totalSize Then
+            Close #fileNumOut
+            partIndex = partIndex + 1
+            writtenForPart = 0
+            fileNumOut = FreeFile
+            Open basePath & ".part" & partIndex For Binary Access Write As #fileNumOut
+        End If
+    Loop
     
-    Close #fileNum
-    MsgBox "分割が完了しました！"
+    Close #fileNumIn
+    Close #fileNumOut
+    Set fso = Nothing
+    
+    MsgBox "大きなファイルの分割が完了しました！", vbInformation
 End Sub
