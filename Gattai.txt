@@ -1,0 +1,30 @@
+Sub MergeFiles()
+    Dim basePath As String, outputPath As String, partPath As String
+    Dim buffer() As Byte
+    Dim i As Integer, fileNum As Integer, outNum As Integer
+    
+    ' --- 設定 ---
+    basePath = "C:\temp\model.gguf" ' 元のファイル名（出力名）
+    ' ------------
+    
+    outNum = FreeFile
+    Open basePath For Binary Access Write As #outNum
+    
+    i = 0
+    Do
+        partPath = basePath & ".part" & i
+        If Dir(partPath) = "" Then Exit Do ' ファイルがなくなったら終了
+        
+        fileNum = FreeFile
+        Open partPath For Binary Access Read As #fileNum
+        ReDim buffer(LOF(fileNum) - 1)
+        Get #fileNum, , buffer
+        Close #fileNum
+        
+        Put #outNum, , buffer
+        i = i + 1
+    Loop
+    
+    Close #outNum
+    MsgBox "合成が完了しました！"
+End Sub
