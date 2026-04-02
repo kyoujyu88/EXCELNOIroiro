@@ -1,18 +1,29 @@
-$inputPath = "largefile.dat"
-$outputPrefix = "part"
-$chunkSize = 100MB # 分割したいサイズ
-$reader = [System.IO.File]::OpenRead($inputPath)
-$buffer = New-Object byte[] $chunkSize
-$count = 0
+Sub SplitFile()
+    Dim inputPath As String, outputPath As String
+    Dim buffer() As Byte
+    Dim fileSize As Long, chunkSize As Long
+    Dim i As Long, fileNum As Integer, outNum As Integer
+    
+    ' --- 設定 ---
+    inputPath = "C:\temp\model.gguf" ' 分割したいファイル
+    chunkSize = 1024 * 1024 * 500    ' 500MBごとに分割
+    ' ------------
 
-try {
-    while (($bytesRead = $reader.Read($buffer, 0, $buffer.Length)) -gt 0) {
-        $outputPath = "{0}{1}" -f $outputPrefix, $count
-        $writer = [System.IO.File]::OpenWrite($outputPath)
-        $writer.Write($buffer, 0, $bytesRead)
-        $writer.Close()
-        $count++
-    }
-} finally {
-    $reader.Close()
-}
+    fileNum = FreeFile
+    Open inputPath For Binary Access Read As #fileNum
+    fileSize = LOF(fileNum)
+    
+    For i = 0 To (fileSize \ chunkSize)
+        ReDim buffer(IIf(fileSize - (i * chunkSize) < chunkSize, fileSize - (i * chunkSize), chunkSize) - 1)
+        Get #fileNum, , buffer
+        
+        outNum = FreeFile
+        outputPath = inputPath & ".part" & i
+        Open outputPath For Binary Access Write As #outNum
+        Put #outNum, , buffer
+        Close #outNum
+    Next i
+    
+    Close #fileNum
+    MsgBox "分割が完了しました！"
+End Sub
